@@ -3,7 +3,7 @@ import ee
 import geemap
 import os
 import folium
-import ast
+from change_detection import run_change_detection
 
 ee.Authenticate()
 ee.Initialize(project="urban-change-detection")
@@ -18,75 +18,14 @@ def create_map():
     m.add_basemap("SATELLITE")
     m.to_html("static/map.html")
 
-def calculate_image_difference(start_image, end_image, bands, stdDevThreshold=2.0, smoothingRadius=3, minObjectSize=10):
-    """
-    Calculates the difference between two images, applies a statistical threshold,
-    and visualizes significant changes as a heatmap.
-    """
-    try:
-        print(start_image.geometry().getInfo())
-        # Calculate the difference for the desired bands.
-        diff_image = end_image.select(bands).subtract(start_image.select(bands))
+def generate_change_detection_map(s2_t1_path, s2_t2_path, model_path, output_folder):
+    """Generates the change detection output image and saves it to a folder."""
+    output_filename = "change_detection_output.tif"
+    output_path = os.path.join(output_folder, output_filename)
 
-        # Calculate the magnitude of the changes.
-        magnitude = diff_image.abs().reduce(ee.Reducer.sum())
-
-        # Smooth the magnitude image to reduce noise.
-        smoothedMagnitude = magnitude.convolve(ee.Kernel.circle(smoothingRadius))
-
-        # Calculate the mean and standard deviation.
-        mean = ee.Number(smoothedMagnitude.reduceRegion(ee.Reducer.mean(), geometry=start_image.geometry(), scale=30).get('mean')) #Corrected key
-        stdDev = ee.Number(smoothedMagnitude.reduceRegion(ee.Reducer.stdDev(), geometry=start_image.geometry(), scale=30).get('stdDev'))
-
-        # Calculate the threshold based on standard deviations.
-        threshold = mean.add(stdDev.multiply(stdDevThreshold))
-
-        # Apply a threshold to create a mask.
-        mask = smoothedMagnitude.gt(threshold)
-
-        # Remove small, isolated changes.
-        connectedPixels = mask.connectedPixelCount(minObjectSize)
-        filteredMask = mask.updateMask(connectedPixels.gte(minObjectSize))
-
-        # Mask out areas with minimal change.
-        masked_diff = smoothedMagnitude.updateMask(filteredMask)
-
-        maxValue = ee.Number(magnitude.reduceRegion(ee.Reducer.max(), geometry=start_image.geometry(), scale=30).get('sum'))
-
-        # Visualize the masked difference as a heatmap.
-        heatmap_vis = masked_diff.visualize(
-            min=threshold,
-            max=maxValue,
-            palette=['blue', 'yellow', 'red']
-        )
-
-        # Get the map ID dictionary.
-        map_id_dict = heatmap_vis.getMapId()
-
-        # Construct the tile URL.
-        tile_url = map_id_dict['tile_fetcher']['url_format']
-
-        # Return both the map ID dictionary and the tile URL.
-        return {
-            'map_id': map_id_dict,
-            'tile_url': tile_url
-        }
-
-    except Exception as e:
-        print(f"Error in calculate_image_difference: {e}")
-        return None
-
-def calculate_band_ratio(start_image, end_image, bands):
-    return "url 2"
-    ratio_image = end_image.divide(start_image)
-    ratio_vis_params = {
-        'bands': bands,
-        'min': 0.8,
-        'max': 1.2,
-        'palette': ['blue', 'white', 'red']
-    }
-    ratio_image_vis = ratio_image.visualize(ratio_vis_params)
-    return ratio_image_vis.getMapId()['tile_fetcher'].url_format
+    # run_change_detection(s2_t1_path, s2_t2_path, output_path, model_path)
+    print("Does this work?")
+    return output_path
 
 def calculate_ndbi_difference(start_image, end_image):
     def calculate_ndbi(image):
@@ -137,59 +76,114 @@ def calculate_ndbi_difference_refined(start_image, end_image):
 
     return ndbi_vis.getMapId()['tile_fetcher'].url_format
 
-"""
-def generate_image(roi_coords, city):
-    roi = ee.Geometry.Polygon(roi_coords)
-    sentinel = "COPERNICUS/S2_SR_HARMONIZED"
-    landsat = "LANDSAT/LC09/C02/T1_L2"
-    landsatBands = ['SR_B4', 'SR_B3', 'SR_B2']
-    sentinelBands = ['B4', 'B3', 'B2']
+def download_sentinel_images(roi, startDate, endDate):
+    """Downloads Sentinel-2 and Sentinel-1 images for the given ROI and date range."""
 
-    collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    # Sentinel-2 Images
+    sentinel2 = "COPERNICUS/S2_SR_HARMONIZED"
+    sentinel2Bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12']
 
-    # start = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-    #     .filterBounds(roi) \
-    #     .filterDate(startDate, ee.Date(startDate).advance(1, 'month')) \
-    #     .sort('CLOUD_COVERAGE_ASSESSMENT') \
-    #     .first()
+    startImageS2 = ee.ImageCollection(sentinel2) \
+        .filterDate(startDate, ee.Date(startDate).advance(1, 'month')) \
+        .filterBounds(roi) \
+        .sort('CLOUD_COVERAGE_ASSESSMENT') \
+        .first()
 
-    # end = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-    #     .filterBounds(roi) \
-    #     .filterDate(endDate, ee.Date(endDate).advance(1, 'month')) \
-    #     .sort('CLOUD_COVERAGE_ASSESSMENT') \
-    #     .first()
+    endImageS2 = ee.ImageCollection(sentinel2) \
+        .filterDate(endDate, ee.Date(endDate).advance(1, 'month')) \
+        .filterBounds(roi) \
+        .sort('CLOUD_COVERAGE_ASSESSMENT') \
+        .first()
 
-    filtered = collection.filterBounds(roi) \
-                        .filterDate('2023-01-01', '2023-12-31') \
-                        .sort('CLOUD_COVERAGE_ASSESSMENT') \
-                        .first()
+    # Sentinel-1 Images
+    sentinel1 = "COPERNICUS/S1_GRD"
+    sentinel1Bands = ['VH', 'VV']
 
-    print(f"Selected image ID: {filtered.get('system:id').getInfo()}")
-    print(f"Image date: {ee.Date(filtered.get('system:time_start')).format('YYYY-MM-dd').getInfo()}")
+    startImageS1 = ee.ImageCollection(sentinel1) \
+        .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+        .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV')) \
+        .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+        .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+        .filterDate(startDate, ee.Date(startDate).advance(1, 'month')) \
+        .filterBounds(roi) \
+        .sort('system:time_start') \
+        .first()
 
-    viz_params = {
-        'bands': ['B4', 'B3', 'B2'],  # RGB bands
-        'min': 0,
-        'max': 3000,  # Adjust based on your image data range
-        'gamma': 1.4
-    }
+    endImageS1 = ee.ImageCollection(sentinel1) \
+        .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')) \
+        .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV')) \
+        .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+        .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')) \
+        .filterDate(endDate, ee.Date(endDate).advance(1, 'month')) \
+        .filterBounds(roi) \
+        .sort('system:time_start') \
+        .first()
 
-    rgb_image = filtered.visualize(**viz_params).uint8()
+    # Create download directory
+    download_dir = "images"
+    os.makedirs(download_dir, exist_ok=True)
 
-    task = ee.batch.Export.image.toDrive(
-        image=rgb_image,
-        description=f'sentinel2_{city}',
+    # File names
+    s2_start_filename = f"sentinel2_{startDate}_start.tif"
+    s2_end_filename = f"sentinel2_{endDate}_end.tif"
+    s1_start_filename = f"sentinel1_{startDate}_start.tif"
+    s1_end_filename = f"sentinel1_{endDate}_end.tif"
+
+    # File paths
+    s2_t1_path = os.path.join(download_dir, s2_start_filename)
+    s2_t2_path = os.path.join(download_dir, s2_end_filename)
+    s1_t1_path = os.path.join(download_dir, s1_start_filename)
+    s1_t2_path = os.path.join(download_dir, s1_end_filename)
+
+    # Export Sentinel-2 images
+    task1_s2 = ee.batch.Export.image.toDrive(
+        image=startImageS2.select(sentinel2Bands),
+        description=s2_start_filename,
         scale=10,
         region=roi,
-        fileFormat='GeoTIFF'
+        fileFormat='GeoTIFF',
+        folder='my-app-images',
+        fileNamePrefix=s2_start_filename
     )
-    task.start()
-    return jsonify({
-        "message": "ROI received successfully",
-        "city": city,
-        "roi_geometry": roi.getInfo()
-    })
-"""
+    task1_s2.start()
+
+    task2_s2 = ee.batch.Export.image.toDrive(
+        image=endImageS2.select(sentinel2Bands),
+        description=s2_end_filename,
+        scale=10,
+        region=roi,
+        fileFormat='GeoTIFF',
+        folder='my-app-images',
+        fileNamePrefix=s2_end_filename
+    )
+    task2_s2.start()
+
+    # Export Sentinel-1 images
+    task1_s1 = ee.batch.Export.image.toDrive(
+        image=startImageS1.select(sentinel1Bands),
+        description=s1_start_filename,
+        scale=10,
+        region=roi,
+        fileFormat='GeoTIFF',
+        folder='my-app-images',
+        fileNamePrefix=s1_start_filename
+    )
+    task1_s1.start()
+
+    task2_s1 = ee.batch.Export.image.toDrive(
+        image=endImageS1.select(sentinel1Bands),
+        description=s1_end_filename,
+        scale=10,
+        region=roi,
+        fileFormat='GeoTIFF',
+        folder='my-app-images',
+        fileNamePrefix=s1_end_filename
+    )
+    task2_s1.start()
+
+    print("download images from drive and save it into images folder.")
+
+    return s1_t1_path, s1_t2_path, s2_t1_path, s2_t2_path
 
 def generate_map(roi_coords, startDate, endDate):
     try:
@@ -224,26 +218,13 @@ def generate_map(roi_coords, startDate, endDate):
             'max': 3000
         }
 
-        # masked_image = maskS2clouds(image)
         startImageClipped = startImage.clip(roi)
         endImageClipped = endImage.clip(roi)
 
         start_image_url = startImageClipped.getMapId(true_color_params)['tile_fetcher'].url_format
         end_image_url = endImageClipped.getMapId(true_color_params)['tile_fetcher'].url_format
 
-        # diff_image_data = calculate_image_difference(startImageClipped, endImageClipped, sentinelBands, stdDevThreshold=2.0, smoothingRadius=3, minObjectSize=10)
-        # if diff_image_data:
-        #     diff_image_url = diff_image_data['tile_url']
-        #     print(f"Difference image URL: {diff_image_url}")
-        # else:
-        #     print("Failed to get difference image URL.")
-        #     return "Error generating map."
-        # ratio_image_url = calculate_band_ratio(startImageClipped, endImageClipped, sentinelBands)
         ndbi_diff_url = calculate_ndbi_difference(startImageClipped, endImageClipped)
-
-        # print(diff_image_url)
-        # print("ratio url: " + ratio_image_url)
-        # print("ndbi url: " + ndbi_diff_url)
 
         center = startImageClipped.geometry().centroid().coordinates().getInfo()
         center_lat, center_lon = center[1], center[0]
@@ -273,22 +254,6 @@ def generate_map(roi_coords, startDate, endDate):
             overlay=True,
             control=True,
         ).add_to(m)
-
-        # folium.TileLayer(
-        #     tiles=ratio_image_url,
-        #     attr='Google Earth Engine',
-        #     name='Band Ratio',
-        #     overlay=True,
-        #     control=True,
-        # ).add_to(m)
-
-        # folium.TileLayer(
-        #     tiles=ndbi_diff_url,
-        #     attr='Google Earth Engine',
-        #     name='NDVI Difference',
-        #     overlay=True,
-        #     control=True,
-        # ).add_to(m)
 
         folium.LayerControl().add_to(m)
 
@@ -321,16 +286,24 @@ def process_roi():
             return jsonify({"error": "No ROI provided"}), 400
 
         roi = ee.Geometry.Polygon([roi_coords])
+        model_path = "model.pt"
+        s1_t1_path, s1_t2_path, s2_t1_path, s2_t2_path = download_sentinel_images(roi, startDate, endDate)
+        
+        output_folder = "output_images"
+        os.makedirs(output_folder, exist_ok=True)
+        output_image_path = generate_change_detection_map(s2_t1_path, s2_t2_path, model_path, output_folder)
 
         folium_map = generate_map(roi_coords, startDate, endDate)
 
         if folium_map:
             return jsonify({
                 "message": "Landsat map generated successfully",
-                "folium_map": folium_map
+                "folium_map": folium_map,
+                "also": "Change detection image generated successfully",
+                "output_image_path": output_image_path
             })
         else:
-            return jsonify({"error": "Failed to generate Landsat map."}), 500
+            return jsonify({"error": "Failed to generate Sentinel map."}), 500
 
     except (ValueError, SyntaxError) as e:
         return jsonify({"error": f"Invalid coordinate format: {e}"}), 400
