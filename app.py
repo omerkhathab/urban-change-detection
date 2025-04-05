@@ -18,38 +18,45 @@ def create_map():
     m.add_basemap("SATELLITE")
     m.to_html("static/map.html")
 
-def calculate_image_difference(start_image, end_image, bands, threshold=100):
+def calculate_image_difference(start_image, end_image, bands, stdDevThreshold=2.0, smoothingRadius=3, minObjectSize=10):
     """
-    Calculates the difference between two images, applies a threshold,
-    and visualizes it as a heatmap.
-
-    Args:
-        start_image: ee.Image, the starting image.
-        end_image: ee.Image, the ending image.
-        bands: list, the bands to calculate the difference on.
-        threshold: The threshold to apply to the difference image.
-
-    Returns:
-        dict: A dictionary containing the map ID and tile URL,
-              or None if an error occurs.
+    Calculates the difference between two images, applies a statistical threshold,
+    and visualizes significant changes as a heatmap.
     """
     try:
+        print(start_image.geometry().getInfo())
         # Calculate the difference for the desired bands.
         diff_image = end_image.select(bands).subtract(start_image.select(bands))
 
-        # Calculate the magnitude of the changes. (if you want to use the magnitude).
+        # Calculate the magnitude of the changes.
         magnitude = diff_image.abs().reduce(ee.Reducer.sum())
 
+        # Smooth the magnitude image to reduce noise.
+        smoothedMagnitude = magnitude.convolve(ee.Kernel.circle(smoothingRadius))
+
+        # Calculate the mean and standard deviation.
+        mean = ee.Number(smoothedMagnitude.reduceRegion(ee.Reducer.mean(), geometry=start_image.geometry(), scale=30).get('mean')) #Corrected key
+        stdDev = ee.Number(smoothedMagnitude.reduceRegion(ee.Reducer.stdDev(), geometry=start_image.geometry(), scale=30).get('stdDev'))
+
+        # Calculate the threshold based on standard deviations.
+        threshold = mean.add(stdDev.multiply(stdDevThreshold))
+
         # Apply a threshold to create a mask.
-        mask = magnitude.gt(threshold)
+        mask = smoothedMagnitude.gt(threshold)
+
+        # Remove small, isolated changes.
+        connectedPixels = mask.connectedPixelCount(minObjectSize)
+        filteredMask = mask.updateMask(connectedPixels.gte(minObjectSize))
 
         # Mask out areas with minimal change.
-        masked_diff = magnitude.updateMask(mask)
+        masked_diff = smoothedMagnitude.updateMask(filteredMask)
+
+        maxValue = ee.Number(magnitude.reduceRegion(ee.Reducer.max(), geometry=start_image.geometry(), scale=30).get('sum'))
 
         # Visualize the masked difference as a heatmap.
         heatmap_vis = masked_diff.visualize(
-            min=threshold,  # Adjust min and max as needed
-            max=500,
+            min=threshold,
+            max=maxValue,
             palette=['blue', 'yellow', 'red']
         )
 
@@ -57,7 +64,7 @@ def calculate_image_difference(start_image, end_image, bands, threshold=100):
         map_id_dict = heatmap_vis.getMapId()
 
         # Construct the tile URL.
-        tile_url = map_id_dict['tile_fetcher'].url_format
+        tile_url = map_id_dict['tile_fetcher']['url_format']
 
         # Return both the map ID dictionary and the tile URL.
         return {
@@ -66,7 +73,7 @@ def calculate_image_difference(start_image, end_image, bands, threshold=100):
         }
 
     except Exception as e:
-        print(f"Error in calculate_image_difference_heatmap: {e}")
+        print(f"Error in calculate_image_difference: {e}")
         return None
 
 def calculate_band_ratio(start_image, end_image, bands):
@@ -82,20 +89,53 @@ def calculate_band_ratio(start_image, end_image, bands):
     return ratio_image_vis.getMapId()['tile_fetcher'].url_format
 
 def calculate_ndbi_difference(start_image, end_image):
-    return "url 3"
     def calculate_ndbi(image):
         return image.normalizedDifference(['B11', 'B8']).rename('NDBI')
 
     ndbi_start = calculate_ndbi(start_image)
     ndbi_end = calculate_ndbi(end_image)
     ndbi_diff = ndbi_end.select('NDBI').subtract(ndbi_start.select('NDBI'))
-    ndbi_diff_vis_params = {
-        'min': -0.2,
-        'max': 0.2,
-        'palette': ['blue', 'white', 'red']
-    }
-    ndbi_diff_vis = ndbi_diff.visualize(ndbi_diff_vis_params)
-    return ndbi_diff_vis.getMapId()['tile_fetcher'].url_format
+
+    # Thresholding
+    urban_increase = ndbi_diff.gt(0.15).selfMask() # Adjust threshold as needed.
+    urban_decrease = ndbi_diff.lt(-0.15).selfMask()
+
+    ndbi_vis = urban_increase.visualize(palette='red').blend(urban_decrease.visualize(palette='blue'))
+
+    return ndbi_vis.getMapId()['tile_fetcher'].url_format
+    
+def calculate_ndbi_difference_refined(start_image, end_image):
+    def calculate_ndbi(image):
+        return image.normalizedDifference(['B11', 'B8']).rename('NDBI')
+
+    ndbi_start = calculate_ndbi(start_image)
+    ndbi_end = calculate_ndbi(end_image)
+    ndbi_diff = ndbi_end.select('NDBI').subtract(ndbi_start.select('NDBI'))
+
+    # Adaptive Thresholding
+    mean = ndbi_diff.reduceRegion(ee.Reducer.mean(), geometry=start_image.geometry(), scale=30).get('NDBI')
+    stdDev = ndbi_diff.reduceRegion(ee.Reducer.stdDev(), geometry=start_image.geometry(), scale=30).get('NDBI')
+
+    # dynamically change the threshold depending on the stdDev.
+    positive_threshold = ee.Number(mean).add(ee.Number(stdDev).multiply(0.5))  # Adjust multiplier as needed
+    negative_threshold = ee.Number(mean).subtract(ee.Number(stdDev).multiply(0.5))
+
+    urban_increase = ndbi_diff.gt(positive_threshold).selfMask()
+    urban_decrease = ndbi_diff.lt(negative_threshold).selfMask()
+
+    # Morphological Operations (Noise Reduction)
+    kernel = ee.Kernel.circle(1)  # Adjust radius as needed
+    urban_increase_filtered = urban_increase.focal_mode(kernel).focal_max(kernel)
+    urban_decrease_filtered = urban_decrease.focal_mode(kernel).focal_min(kernel)
+
+    # Visualization Enhancement
+    ndbi_vis = ee.ImageCollection([
+        urban_increase_filtered.visualize(palette='red'),
+        urban_decrease_filtered.visualize(palette='blue'),
+        ndbi_diff.visualize(min=-0.2, max=0.2, palette=['blue', 'white', 'red']).unmask() #add the original ndbi diff as well.
+    ]).mosaic()
+
+    return ndbi_vis.getMapId()['tile_fetcher'].url_format
 
 """
 def generate_image(roi_coords, city):
@@ -191,17 +231,17 @@ def generate_map(roi_coords, startDate, endDate):
         start_image_url = startImageClipped.getMapId(true_color_params)['tile_fetcher'].url_format
         end_image_url = endImageClipped.getMapId(true_color_params)['tile_fetcher'].url_format
 
-        diff_image_data = calculate_image_difference(startImageClipped, endImageClipped, sentinelBands)
-        if diff_image_data:
-            diff_image_url = diff_image_data['tile_url']
-            print(f"Difference image URL: {diff_image_url}")
-        else:
-            print("Failed to get difference image URL.")
-            return "Error generating map."
+        # diff_image_data = calculate_image_difference(startImageClipped, endImageClipped, sentinelBands, stdDevThreshold=2.0, smoothingRadius=3, minObjectSize=10)
+        # if diff_image_data:
+        #     diff_image_url = diff_image_data['tile_url']
+        #     print(f"Difference image URL: {diff_image_url}")
+        # else:
+        #     print("Failed to get difference image URL.")
+        #     return "Error generating map."
         # ratio_image_url = calculate_band_ratio(startImageClipped, endImageClipped, sentinelBands)
-        # ndbi_diff_url = calculate_ndbi_difference(startImageClipped, endImageClipped)
+        ndbi_diff_url = calculate_ndbi_difference(startImageClipped, endImageClipped)
 
-        print(diff_image_url)
+        # print(diff_image_url)
         # print("ratio url: " + ratio_image_url)
         # print("ndbi url: " + ndbi_diff_url)
 
@@ -227,7 +267,7 @@ def generate_map(roi_coords, startDate, endDate):
         ).add_to(m)
 
         folium.TileLayer(
-            tiles=diff_image_url,
+            tiles=ndbi_diff_url,
             attr='Google Earth Engine',
             name='Image Difference',
             overlay=True,
