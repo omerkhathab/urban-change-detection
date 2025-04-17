@@ -1,0 +1,15 @@
+.folium-map {
+    width: 80%; /* Adjust width as needed */
+    height: 400px; /* Adjust height as needed */
+    margin: 0 auto; /*Center the map*/
+}
+img {
+    width: 30%;
+    margin: 1%;
+    /* border: 2px solid #ccc; */
+}
+.image-container {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+}

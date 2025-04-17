@@ -1,0 +1,10 @@
+venv
+__pycache__/
+client_secrets.json
+credentials.json
+images/
+output_images/
+static/change_map.png
+static/semantic_t1.png
+static/semantic_t2.png
+model.pt

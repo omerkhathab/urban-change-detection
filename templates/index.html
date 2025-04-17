@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urban Change Detection</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h2>Select Area on Map</h2>
+
+    <div id="map" style="height: 600px;"></div>
+    <br />
+
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate" min="2017-06-01" max="2024-12-31"/>
+    <br /><br />
+
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate" max="2025-01-31"/>
+    <br /><br />
+
+    <button onclick="submitROI()">Submit</button>
+
+    <p id="result"></p>
+    <p id="response"></p>
+    
+    <div id="folium-map-container"></div>
+    <div id="result-images" class="image-container"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
