@@ -2,36 +2,101 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Urban Change Detection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdn.knightlab.com/libs/juxtapose/latest/css/juxtapose.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.knightlab.com/libs/juxtapose/latest/js/juxtapose.min.js"></script>
+
+    <style>
+
+    </style>
 </head>
-<body>
-    <h2>Select Area on Map</h2>
+<body class="bg-light">
 
-    <div id="map" style="height: 600px;"></div>
-    <br />
+<div class="container my-4">
+    <h2 class="text-center mb-4">Urban Change Detection</h2>
 
-    <label for="startDate">Start Date:</label>
-    <input type="date" id="startDate" min="2017-06-01" max="2024-12-31"/>
-    <br /><br />
+    <!-- Mode Selector Tabs -->
+    <ul class="nav nav-tabs mb-3" id="modeTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="short-tab" data-bs-toggle="tab" data-bs-target="#shortTermInputs" type="button" role="tab">
+                Short-Term (Sentinel)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="long-tab" data-bs-toggle="tab" data-bs-target="#longTermInputs" type="button" role="tab">
+                Long-Term (City)
+            </button>
+        </li>
+    </ul>
 
-    <label for="endDate">End Date:</label>
-    <input type="date" id="endDate" max="2025-01-31"/>
-    <br /><br />
+    <div class="tab-content">
+        <!-- Short Term Inputs -->
+        <div class="tab-pane fade show active" id="shortTermInputs" role="tabpanel">
+            <div class="card p-4">
+                <h5>Select Region on Map</h5>
+                <div id="map" class="mb-3"></div>
 
-    <button onclick="submitROI()">Submit</button>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Start Date:</label>
+                        <input type="date" id="startDate" class="form-control" min="2017-06-01" max="2024-12-31">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">End Date:</label>
+                        <input type="date" id="endDate" class="form-control" max="2025-01-31">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="submitROI()">Submit</button>
+            </div>
+        </div>
 
-    <p id="result"></p>
-    <p id="response"></p>
-    
-    <div id="folium-map-container"></div>
-    <div id="result-images" class="image-container"></div>
+        <!-- Long Term Inputs -->
+        <div class="tab-pane fade" id="longTermInputs" role="tabpanel">
+            <div class="card p-4">
+                <div class="mb-3">
+                    <label class="form-label">Select City:</label>
+                    <select class="form-select" id="citySelect">
+                        <option value="">-- Choose a city --</option>
+                        <option value="chennai">Chennai</option>
+                        <option value="bangalore">Bangalore</option>
+                    </select>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Start Year:</label>
+                        <input type="number" class="form-control" id="startYear" min="2000" max="2024">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">End Year:</label>
+                        <input type="number" class="form-control" id="endYear" min="2001" max="2025">
+                    </div>
+                </div>
+                <button class="btn btn-success" onclick="submitLongTerm()">Submit</button>
+            </div>
+        </div>
+    </div>
 
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- Output Sections -->
+    <div class="my-4" id="response" class="text-muted"></div>
+    <div id="loading" class="align-items-center my-4 d-none">
+        <strong id="status-box">Loading...</strong>
+        <div class="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+    </div>
+    <div id="folium-map-container" class="card p-3 mb-4 d-none"></div>
+    <div id="result-images" class="d-flex flex-wrap justify-content-center image-container"></div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

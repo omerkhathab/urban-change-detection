@@ -1,15 +1,36 @@
-.folium-map {
-    width: 80%; /* Adjust width as needed */
-    height: 400px; /* Adjust height as needed */
-    margin: 0 auto; /*Center the map*/
+#map { height: 500px; }
+
+.image-container img {
+    width: 100%;
+    max-width: 300px;
+    margin: 10px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
 }
-img {
-    width: 30%;
-    margin: 1%;
-    /* border: 2px solid #ccc; */
+
+#result-images {
+    width: 100%;
+    margin-top: 1.5rem;
 }
-.image-container {
+
+.juxtapose {
+    max-width: 100%;
+    height: 400px;
+}
+
+.juxtapose .jx-image {
+    object-fit: cover;
+    height: 100%;
+    width: 100%;
+}
+
+#sliderContainer .juxtapose {
+    height: 500px;
+    width: 100%;
+}
+
+#sliderContainer {
     display: flex;
+    align-items: center;
     justify-content: center;
-    flex-wrap: wrap;
 }

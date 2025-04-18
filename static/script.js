@@ -63,15 +63,14 @@ function submitROI() {
     var endDate = document.getElementById("endDate").value;
 
     if (!startDate || !endDate) {
-        document.getElementById("result").innerText = "Please select both start and end dates.";
+        document.getElementById("response").innerText = "Please select both start and end dates.";
         return;
     }
     if (new Date(startDate) > new Date(endDate)) {
-        document.getElementById("result").innerText = "Start date must be before end date.";
+        document.getElementById("response").innerText = "Start date must be before end date.";
         return;
     }
-    document.getElementById("result").innerText = `Start: ${startDate}\nEnd: ${endDate}`;
-    document.getElementById("response").innerText = "Search for satellite images...";
+    fetchStatus();
     fetch('/process_roi', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,19 +80,68 @@ function submitROI() {
     .then(data => {
         console.log("Server Response:", data);
         if (data.folium_map) {
+            document.getElementById('folium-map-container').classList.remove("d-none");
             document.getElementById('folium-map-container').innerHTML = data.folium_map;
             document.getElementById("response").innerText = "";
         } else {
-            document.getElementById("response").innerText = "Error: " + JSON.stringify(data);
+            document.getElementById("response").innerText = "There was an error: " + data.error;
         }
         if (data.change_image_url) {
             document.getElementById("result-images").innerHTML = `
-                <img src="${data.change_image_url}" alt="Change Detection">
-                <img src="${data.start}" alt="start image">
-                <img src="${data.end}" alt="end image">
+                <div class="d-flex flex-row w-100 gap-3">
+                    <div id="sliderContainer" class="flex-fill"></div>
+                    <div class="flex-fill d-flex align-items-center justify-content-center">
+                        <img src="${data.change_image_url}" alt="Change Map" class="img-fluid shadow rounded" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                    </div>
+                </div>
             `;
+        
+            new juxtapose.JXSlider('#sliderContainer', [
+                {
+                    src: data.start,
+                    label: 'Before'
+                },
+                {
+                    src: data.end,
+                    label: 'After'
+                }
+            ], {
+                animate: true,
+                showLabels: true,
+                showCredits: false,
+                makeResponsive: true
+            });
         }
-
     })
     .catch(error => console.error("Error:", error));
+}
+function submitLongTerm() {
+    var startYear = document.getElementById("startYear").value;
+    var endYear = document.getElementById("endYear").value;
+
+    if (!startYear || !endYear) {
+        document.getElementById("response").innerText = "Please select both start and end dates.";
+        return;
+    }
+    if (new Date(startYear) > new Date(endYear)) {
+        document.getElementById("response").innerText = "Start date must be before end date.";
+        return;
+    }
+    console.log(startYear)
+    console.log(endYear)
+}
+function fetchStatus() {
+    fetch('/status')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('status-box').innerText = data.status;
+            if (data.status !== "Done") {
+                document.getElementById('loading').classList.remove("d-none");
+                document.getElementById('loading').classList.add("d-flex");
+                setTimeout(fetchStatus, 3000);
+            } else {
+                document.getElementById('loading').classList.remove("d-flex");
+                document.getElementById('loading').classList.add("d-none");
+            }
+    });
 }

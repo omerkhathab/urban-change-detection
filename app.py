@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 import ee
@@ -18,6 +18,8 @@ ee.Authenticate()
 ee.Initialize(project="urban-change-detection")
 
 app = Flask(__name__)
+
+status_message = ""
 
 os.makedirs("static", exist_ok=True)
 
@@ -143,7 +145,7 @@ def generate_pngs(file_path):
         semantic_t2 = img[2] if img.shape[0] > 2 else None  # Handle if missing
 
         # Save change detection output
-        save_image(change_map, "static/change_map.png", cmap='coolwarm')
+        save_image(change_map, "static/change_map.png", cmap='hot')
 
         # Save semantic segmentation for T1
         save_image(semantic_t1, "static/semantic_t1.png", cmap='viridis')
@@ -214,7 +216,7 @@ def download_sentinel_images(roi, startDate, endDate):
     S1 = "COPERNICUS/S1_GRD"
     S2_BANDS = ['B2', 'B3', 'B4', 'B8']
     S1_BANDS = ['VV', 'VH']
-
+    global status_message
     def get_s2_image(from_date):
         to_date = ee.Date(from_date).advance(1, 'month')
 
@@ -309,7 +311,9 @@ def download_sentinel_images(roi, startDate, endDate):
         )
         task.start()
         export_tasks.append(task)
+    status_message = "Generating images..."
     wait_for_tasks(export_tasks)
+    status_message = "Downloading images..."
     download_files_from_drive(startDate, endDate, drive, folder_name='my-app-images', local_folder=download_dir)
     tiff_paths = [os.path.join(download_dir, f"{name}.tif") for name in filenames.values()]
     png_paths = [geotiff_to_png(tiff) for tiff in tiff_paths]
@@ -319,7 +323,6 @@ def download_sentinel_images(roi, startDate, endDate):
     return tiff_paths
 
 def generate_map(roi_coords, startDate, endDate):
-
     try:
         roi = ee.Geometry.Polygon(roi_coords)
         sentinel = "COPERNICUS/S2_SR_HARMONIZED"
@@ -397,11 +400,11 @@ def generate_map(roi_coords, startDate, endDate):
 
 @app.route('/')
 def index():
-    """Render the main page with the interactive map."""
     return render_template('index.html')
 
 @app.route('/process_roi', methods=['POST'])
 def process_roi():
+    global status_message
     try:
         data = request.json
         roi_coords = data.get("roi")
@@ -413,24 +416,29 @@ def process_roi():
 
         roi = ee.Geometry.Polygon([roi_coords])
         model_path = "./"
+        status_message = "Searching for satellite images..."
         s1_t1_path, s1_t2_path, s2_t1_path, s2_t2_path = download_sentinel_images(roi, startDate, endDate)
+        
         output_folder = "output_images"
         os.makedirs(output_folder, exist_ok=True)
         output_image_path = None
         try:
+            status_message = "Generating change detection map..."
             output_image_path = generate_change_detection_map(
                 s1_t1_path, s1_t2_path, s2_t1_path, s2_t2_path, model_path, output_folder
             )
             print(f"Output image saved to: {output_image_path}")
+            status_message = "Generating images..."
             generate_pngs(output_image_path)
-            print("PNG image generation done?")
+            status_message = "Image generation done."
         except FileNotFoundError as e:
             print(f"Error: File not found - {e}")
         except Exception as e:
             print(f"An error occurred: {e}")
 
+        status_message = "Generating map..."
         folium_map = generate_map(roi_coords, startDate, endDate)
-
+        status_message = "Done"
         if folium_map:
             return jsonify({
                 "message": "Sentinel map generated successfully",
@@ -448,6 +456,10 @@ def process_roi():
         return jsonify({"error": f"Invalid coordinate format: {e}"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/status')
+def get_status():
+    return jsonify({"status": status_message})
 
 if __name__ == '__main__':
     app.run(debug=True)
