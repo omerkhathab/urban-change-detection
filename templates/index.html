@@ -16,12 +16,6 @@
     <div class="container my-4">
         <h2 class="text-center mb-4">Urban & Demographic Change</h2>
 
-        <!-- Map Section (Moved above the tabs) -->
-        <div class="card p-4 mb-4">
-            <h5>Select Region on Map</h5>
-            <div id="map" class="mb-3" style="height: 400px;"></div>
-        </div>
-
         <!-- Mode Selector Tabs -->
         <ul class="nav nav-tabs mb-3" id="modeTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -36,10 +30,14 @@
             </li>
         </ul>
 
-        <div class="tab-content">
-            <!-- Short Term Inputs -->
-            <div class="tab-pane fade show active" id="shortTermInputs" role="tabpanel">
-                <div class="card p-4">
+        <!-- Map Section -->
+        <div class="card p-4 mb-4">
+            <h5>Select Region on Map</h5>
+            <div id="map" class="mb-3" style="height: 500px;"></div>
+            
+            <div class="tab-content">
+                <!-- Short Term Inputs -->
+                <div class="tab-pane fade show active" id="shortTermInputs" role="tabpanel">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Start Date:</label>
@@ -52,11 +50,9 @@
                     </div>
                     <button class="btn btn-primary" onclick="submitROI()">Submit</button>
                 </div>
-            </div>
-
-            <!-- Long Term Inputs -->
-            <div class="tab-pane fade" id="longTermInputs" role="tabpanel">
-                <div class="card p-4">
+        
+                <!-- Long Term Inputs -->
+                <div class="tab-pane fade" id="longTermInputs" role="tabpanel">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label" for="startYear">Start Date:</label>
@@ -87,7 +83,7 @@
                                 <option value="2010">2010</option>
                                 <option value="2015">2015</option>
                                 <option value="2020">2020</option>
-                                <option value="2025">2025</option>
+                                <option value="2025" selected>2025</option>
                             </select>
                         </div>
                     </div>
