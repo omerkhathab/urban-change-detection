@@ -2,13 +2,11 @@ from flask import Flask, render_template, request, jsonify
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 import ee
-import geemap
 import os
 import time
 import folium
 import rasterio
 import shutil
-from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
