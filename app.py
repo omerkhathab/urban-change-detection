@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from change_detection import run_change_detection
+from long_term import add_population_layer, calculate_population
 
 ee.Authenticate()
 ee.Initialize(project="urban-change-detection")
@@ -20,8 +21,6 @@ ee.Initialize(project="urban-change-detection")
 app = Flask(__name__)
 
 status_message = ""
-
-os.makedirs("static", exist_ok=True)
 
 def authenticate_drive():
     gauth = GoogleAuth()
@@ -217,31 +216,48 @@ def download_sentinel_images(roi, startDate, endDate):
     S2_BANDS = ['B2', 'B3', 'B4', 'B8']
     S1_BANDS = ['VV', 'VH']
     global status_message
+    
+    # def get_s2_image(from_date):
+    #     to_date = ee.Date(from_date).advance(1, 'month')
+
+    #     s2 = ee.ImageCollection(S2_HARMONIZED) \
+    #         .filterDate(from_date, to_date) \
+    #         .filterBounds(roi)
+
+    #     clouds = ee.ImageCollection(S2_CLOUDS) \
+    #         .filterDate(from_date, to_date) \
+    #         .filterBounds(roi)
+
+    #     join = ee.Join.saveFirst('cloud') \
+    #         .apply(s2, clouds, ee.Filter.equals(leftField='system:index', rightField='system:index'))
+
+    #     def add_cloud(img):
+    #         cloud = ee.Image(img.get('cloud'))
+    #         cloud_score = cloud.select('probability')
+    #         return ee.Image(img).addBands(cloud_score).set('cloudScore', cloud_score.reduceRegion(
+    #             reducer=ee.Reducer.mean(), geometry=roi, scale=10, maxPixels=1e12).get('probability'))
+
+    #     processed = ee.ImageCollection(join).map(add_cloud)
+    #     mosaic = processed.sort('cloudScore').mosaic().select(S2_BANDS) \
+    #         .unitScale(0, 10000).clamp(0, 1).unmask().float()
+
+    #     return mosaic
+
     def get_s2_image(from_date):
         to_date = ee.Date(from_date).advance(1, 'month')
 
-        s2 = ee.ImageCollection(S2_HARMONIZED) \
+        startImage = ee.ImageCollection(S2_HARMONIZED) \
             .filterDate(from_date, to_date) \
-            .filterBounds(roi)
+            .filterBounds(roi) \
+            .sort('CLOUD_COVERAGE_ASSESSMENT') \
+            .first() \
+            .select(S2_BANDS) \
+            .unitScale(0, 10000) \
+            .clamp(0, 1) \
+            .unmask() \
+            .float()
 
-        clouds = ee.ImageCollection(S2_CLOUDS) \
-            .filterDate(from_date, to_date) \
-            .filterBounds(roi)
-
-        join = ee.Join.saveFirst('cloud') \
-            .apply(s2, clouds, ee.Filter.equals(leftField='system:index', rightField='system:index'))
-
-        def add_cloud(img):
-            cloud = ee.Image(img.get('cloud'))
-            cloud_score = cloud.select('probability')
-            return ee.Image(img).addBands(cloud_score).set('cloudScore', cloud_score.reduceRegion(
-                reducer=ee.Reducer.mean(), geometry=roi, scale=10, maxPixels=1e12).get('probability'))
-
-        processed = ee.ImageCollection(join).map(add_cloud)
-        mosaic = processed.sort('cloudScore').mosaic().select(S2_BANDS) \
-            .unitScale(0, 10000).clamp(0, 1).unmask().float()
-
-        return mosaic
+        return startImage
 
     def get_s1_image(from_date):
         to_date = ee.Date(from_date).advance(1, 'month')
@@ -390,6 +406,7 @@ def generate_map(roi_coords, startDate, endDate):
             name='Image Difference',
             overlay=True,
             control=True,
+            show=False
         ).add_to(m)
 
         folium.LayerControl().add_to(m)
@@ -397,6 +414,87 @@ def generate_map(roi_coords, startDate, endDate):
 
     except Exception as e:
         return jsonify({"error": f"Error generating map: {e}"}), 400
+
+def generate_long_term_map(city_name, startYear, endYear):
+    try:
+        cities = ee.FeatureCollection("TIGER/2018/Places")
+        city = cities.filter(ee.Filter.eq('NAME', city_name)).first()
+        if city is None or city.getInfo() is None:
+            return jsonify({"error": f"City '{city_name}' not found."}), 400
+
+        roi = city.geometry()
+
+        startYear = int(startYear)
+        endYear = int(endYear)
+
+        def get_landsat_collection(year):
+            if year < 2012:
+                return "LANDSAT/LT05/C01/T1_SR"
+            elif year < 2013:
+                return "LANDSAT/LE07/C01/T1_SR"
+            else:
+                return "LANDSAT/LC08/C01/T1_SR"
+
+        def get_ndvi(img):
+            return img.normalizedDifference(['B5', 'B4']).rename('NDVI')
+
+        def get_ndbi(img):
+            return img.normalizedDifference(['B6', 'B5']).rename('NDBI')
+
+        def get_composite(collection_id, year):
+            return ee.ImageCollection(collection_id) \
+                .filterBounds(roi) \
+                .filterDate(f"{year}-01-01", f"{year}-12-31") \
+                .sort('CLOUD_COVER') \
+                .median() \
+                .clip(roi)
+
+        start_coll = get_landsat_collection(startYear)
+        end_coll = get_landsat_collection(endYear)
+
+        start_img = get_composite(start_coll, startYear)
+        end_img = get_composite(end_coll, endYear)
+
+        ndvi_diff = get_ndvi(end_img).subtract(get_ndvi(start_img)).rename('NDVI_Change')
+        ndbi_diff = get_ndbi(end_img).subtract(get_ndbi(start_img)).rename('NDBI_Change')
+
+        vis_rgb = {"bands": ['B4', 'B3', 'B2'], "min": 0, "max": 3000}
+        vis_diff = {"min": -0.5, "max": 0.5, "palette": ['red', 'white', 'green']}
+
+        center = roi.centroid().coordinates().getInfo()
+        lat, lon = center[1], center[0]
+
+        m = folium.Map(location=[lat, lon], zoom_start=11)
+
+        folium.TileLayer(
+            tiles=start_img.visualize(**vis_rgb).getMapId()['tile_fetcher'].url_format,
+            attr='Start Year',
+            name=f'{startYear} Image'
+        ).add_to(m)
+
+        folium.TileLayer(
+            tiles=end_img.visualize(**vis_rgb).getMapId()['tile_fetcher'].url_format,
+            attr='End Year',
+            name=f'{endYear} Image'
+        ).add_to(m)
+
+        folium.TileLayer(
+            tiles=ndvi_diff.visualize(**vis_diff).getMapId()['tile_fetcher'].url_format,
+            attr='NDVI Change',
+            name='NDVI Change'
+        ).add_to(m)
+
+        folium.TileLayer(
+            tiles=ndbi_diff.visualize(**vis_diff).getMapId()['tile_fetcher'].url_format,
+            attr='NDBI Change',
+            name='NDBI Change'
+        ).add_to(m)
+
+        folium.LayerControl().add_to(m)
+        return m._repr_html_()
+
+    except Exception as e:
+        return jsonify({"error": f"Error generating long-term map: {str(e)}"}), 400
 
 @app.route('/')
 def index():
@@ -452,6 +550,40 @@ def process_roi():
         else:
             return jsonify({"error": "Failed to generate Sentinel map."}), 500
 
+    except (ValueError, SyntaxError) as e:
+        return jsonify({"error": f"Invalid coordinate format: {e}"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/process_long_term', methods=['POST'])
+def long_term_change_detection():
+    global status_message
+    try:
+        data = request.json
+        roi_coords = data.get("coords")
+        startYear = int(data.get("startYear"))
+        endYear = int(data.get("endYear"))
+
+        if not roi_coords:
+            return jsonify({"error": "No ROI provided"}), 400
+
+        roi = ee.Geometry.Polygon([roi_coords])
+
+        center = roi.centroid().coordinates().getInfo()
+        center_lat, center_lon = center[1], center[0]
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+
+        for year in range(startYear, endYear + 1, 5):
+            img = ee.ImageCollection("JRC/GHSL/P2023A/GHS_POP").toBands().select(f"{year}_population_count")
+            if(year == startYear): display = True
+            else: display = False
+            add_population_layer(img, f"Population {year}", roi, m, display)
+        
+        folium.LayerControl().add_to(m)
+        map_html = m._repr_html_()
+        df = calculate_population(roi, startYear, endYear)
+        
+        return jsonify({"folium_map": map_html, "population_data": df})
     except (ValueError, SyntaxError) as e:
         return jsonify({"error": f"Invalid coordinate format: {e}"}), 400
     except Exception as e:
