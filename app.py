@@ -568,11 +568,11 @@ def long_term_change_detection():
             return jsonify({"error": "No ROI provided"}), 400
 
         roi = ee.Geometry.Polygon([roi_coords])
-
+        
         center = roi.centroid().coordinates().getInfo()
         center_lat, center_lon = center[1], center[0]
         m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
-
+        status_message = "Generating satellite images..."
         for year in range(startYear, endYear + 1, 5):
             img = ee.ImageCollection("JRC/GHSL/P2023A/GHS_POP").toBands().select(f"{year}_population_count")
             if(year == startYear): display = True
@@ -581,8 +581,9 @@ def long_term_change_detection():
         
         folium.LayerControl().add_to(m)
         map_html = m._repr_html_()
+        status_message = "Calculating population count..."
         df = calculate_population(roi, startYear, endYear)
-        
+        status_message = "Done"
         return jsonify({"folium_map": map_html, "population_data": df})
     except (ValueError, SyntaxError) as e:
         return jsonify({"error": f"Invalid coordinate format: {e}"}), 400

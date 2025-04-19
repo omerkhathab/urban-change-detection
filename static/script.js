@@ -80,6 +80,7 @@ function submitROI() {
     .then(data => {
         console.log("Server Response:", data);
         if (data.folium_map) {
+            const mapContainer = document.getElementById("folium-map-container");
             mapContainer.classList.remove("d-none");
             mapContainer.innerHTML = data.folium_map;
             document.getElementById("response").innerText = "";
@@ -128,6 +129,7 @@ function submitLongTerm() {
         document.getElementById("response").innerText = "Start date must be before end date.";
         return;
     }
+    fetchStatus();
     fetch('/process_long_term', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
