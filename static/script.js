@@ -89,29 +89,10 @@ function submitROI() {
         }
         if (data.change_image_url) {
             document.getElementById("result-images").innerHTML = `
-                <div class="d-flex flex-row w-100 gap-3">
-                    <div id="sliderContainer" class="flex-fill"></div>
-                    <div class="flex-fill d-flex align-items-center justify-content-center">
-                        <img src="${data.change_image_url}" alt="Change Map" class="img-fluid shadow rounded" style="max-height: 100%; max-width: 100%; object-fit: contain;">
-                    </div>
-                </div>
+                <img src="${data.start}" alt="Before Image" class="img-fluid shadow rounded m-2" style="max-width: 30%;">
+                <img src="${data.end}" alt="After Image" class="img-fluid shadow rounded m-2" style="max-width: 30%;">
+                <img src="${data.change_image_url}" alt="Change Map" class="img-fluid shadow rounded m-2" style="max-width: 30%;">
             `;
-        
-            new juxtapose.JXSlider('#sliderContainer', [
-                {
-                    src: data.start,
-                    label: 'Before'
-                },
-                {
-                    src: data.end,
-                    label: 'After'
-                }
-            ], {
-                animate: true,
-                showLabels: true,
-                showCredits: false,
-                makeResponsive: true
-            });
         }
     })
     .catch(error => console.error("Error:", error));

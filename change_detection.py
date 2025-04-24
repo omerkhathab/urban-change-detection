@@ -7,7 +7,7 @@ import torchvision.transforms.functional as TF
 from tqdm import tqdm
 from collections import OrderedDict
 
-# Model Definition (Copied from your Colab notebook)
+# Model Definition
 class DualTaskLateFusionSiameseUnet(nn.Module):
     def __init__(self):
         super(DualTaskLateFusionSiameseUnet, self).__init__()
@@ -244,7 +244,7 @@ def load_checkpoint(cfg_name: str, device: torch.device, folder: str):
 
     return net
 
-# GeoTIFF I/O Functions (Copied from your Colab notebook)
+# GeoTIFF I/O Functions
 def read_tif(file):
     with rasterio.open(file) as dataset:
         arr = dataset.read()
@@ -265,7 +265,7 @@ def write_tif(file, arr, transform, crs):
         for i in range(bands):
             dst.write(arr[:, :, i], i + 1)
 
-# Dataset Class (Copied from your Colab notebook)
+# Dataset Class
 class SceneInferenceDataset(torch.utils.data.Dataset):
 
   def __init__(self, s2_t1: np.ndarray, s2_t2: np.ndarray, s1_t1: np.ndarray,

@@ -47,34 +47,37 @@ def wait_for_tasks(export_tasks):
     print("All export tasks completed.")
 
 def download_files_from_drive(startDate, endDate, drive, folder_name, local_folder):
-    # Step 1: Find the folder ID by its name
-    folder_list = drive.ListFile({
-        'q': f"title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed=false"
-    }).GetList()
-    
-    if not folder_list:
-        raise Exception(f"Folder '{folder_name}' not found in Drive or not shared with this service account.")
+    if folder_name:
+        # Step 1: Find the folder ID by its name
+        folder_list = drive.ListFile({
+            'q': f"title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed=false"
+        }).GetList()
+        
+        if not folder_list:
+            raise Exception(f"Folder '{folder_name}' not found in Drive or not shared with this service account.")
 
-    folder_id = folder_list[0]['id']
-    print(f"Found folder '{folder_name}' with ID: {folder_id}")
+        folder_id = folder_list[0]['id']
+        print(f"Found folder '{folder_name}' with ID: {folder_id}")
 
-    # Step 2: List all files in that folder
-    file_list = drive.ListFile({
-        'q': f"'{folder_id}' in parents and trashed=false"
-    }).GetList()
+        # Step 2: List all files in that folder
+        file_list = drive.ListFile({
+            'q': f"'{folder_id}' in parents and trashed=false"
+        }).GetList()
+    else:
+        # List files from root if folder_name is None
+        file_list = drive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
 
     if not file_list:
-        print("No files found in the folder.")
+        print("No files found.")
         return
 
     os.makedirs(local_folder, exist_ok=True)
 
-    # Step 3: Download each file
     expected_files = {
-    "sentinel2_" + startDate + "_start.tif",
-    "sentinel2_" + endDate + "_end.tif",
-    "sentinel1_" + startDate + "_start.tif",
-    "sentinel1_" + endDate + "_end.tif"
+        f"sentinel2_{startDate}_start.tif",
+        f"sentinel2_{endDate}_end.tif",
+        f"sentinel1_{startDate}_start.tif",
+        f"sentinel1_{endDate}_end.tif"
     }
 
     for file in file_list:
@@ -318,7 +321,7 @@ def download_sentinel_images(roi, startDate, endDate):
             scale=10,
             region=roi,
             fileFormat='GeoTIFF',
-            folder='my-app-images',
+            folder=None,
             fileNamePrefix=name,
             crs='EPSG:4326',
             maxPixels=1e13
@@ -328,7 +331,7 @@ def download_sentinel_images(roi, startDate, endDate):
     status_message = "Generating images..."
     wait_for_tasks(export_tasks)
     status_message = "Downloading images..."
-    download_files_from_drive(startDate, endDate, drive, folder_name='my-app-images', local_folder=download_dir)
+    download_files_from_drive(startDate, endDate, drive, folder_name=None, local_folder=download_dir)
     tiff_paths = [os.path.join(download_dir, f"{name}.tif") for name in filenames.values()]
     png_paths = [geotiff_to_png(tiff) for tiff in tiff_paths]
     print("png paths:")
