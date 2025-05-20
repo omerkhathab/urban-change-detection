@@ -362,21 +362,21 @@ def run_change_detection(s1_t1_path, s1_t2_path, s2_t1_path, s2_t2_path, output_
         # Unpack outputs
         logits_ch = logits[0]
         logits_sem_t1 = logits[5]
-        logits_sem_t2 = logits[6]  # <-- new
+        logits_sem_t2 = logits[6]
 
         # Post-process
         y_pred_ch = torch.sigmoid(logits_ch).squeeze().cpu().numpy()
         y_pred_sem_t1 = torch.sigmoid(logits_sem_t1).squeeze().cpu().numpy()
-        y_pred_sem_t2 = torch.sigmoid(logits_sem_t2).squeeze().cpu().numpy()  # <-- new
+        y_pred_sem_t2 = torch.sigmoid(logits_sem_t2).squeeze().cpu().numpy()
 
         y_pred_ch = np.clip(y_pred_ch * 100, 0, 100).astype(np.uint8)
         y_pred_sem_t1 = np.clip(y_pred_sem_t1 * 100, 0, 100).astype(np.uint8)
-        y_pred_sem_t2 = np.clip(y_pred_sem_t2 * 100, 0, 100).astype(np.uint8)  # <-- new
+        y_pred_sem_t2 = np.clip(y_pred_sem_t2 * 100, 0, 100).astype(np.uint8)
 
         i, j = tile['i'], tile['j']
         pred[i:i + tile_size, j:j + tile_size, 0] = y_pred_ch
         pred[i:i + tile_size, j:j + tile_size, 1] = y_pred_sem_t1
-        pred[i:i + tile_size, j:j + tile_size, 2] = y_pred_sem_t2  # <-- new
+        pred[i:i + tile_size, j:j + tile_size, 2] = y_pred_sem_t2
 
     write_tif(output_path, pred, transform, crs)
     return output_path
